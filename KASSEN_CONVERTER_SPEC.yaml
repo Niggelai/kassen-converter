@@ -11,7 +11,7 @@ scope:
   datev_replacement: false
   modifies_original_records: false
   primary_goal: "Nachvollziehbare Projektion vorhandener Kassendaten in Excel-kompatible CSV-Dateien"
-  secondary_goal: "Bereitstellung positionsgenauer Artikeldaten für betriebliche Auswertungen"
+  secondary_goal: "Bereitstellung positionsgenauer und transparent aggregierter Artikeldaten für betriebliche Auswertungen"
 
 runtime:
   platform: Windows
@@ -88,6 +88,7 @@ outputs:
         - datum
         - uhrzeit
         - bonnummer
+        - position
         - artikel
         - betrag
         - mwst
@@ -95,6 +96,7 @@ outputs:
         - zahlungsart
       rules:
         - "Values must originate from source data or from trivial transparent derivations."
+        - "Position is a 1-based technical sequence number within each receipt, preserving XML source order."
         - "Do not silently invent categories, quantities or corrections."
         - "If repeated units are represented as repeated positions, preserve them as repeated rows."
 
@@ -127,9 +129,50 @@ outputs:
         - "Tips must remain separately visible and must not be treated as sales revenue."
         - "Difference must make receipt-level inconsistencies visible."
 
+    - id: article_summary
+      filename: "Artikel_Auswertung_YYYY-MM.csv"
+      granularity: "one row per article and VAT rate for the month"
+      purpose:
+        - merchandise_overview
+        - excel_filtering
+      columns:
+        - artikel
+        - mwst
+        - stk
+        - umsatz
+        - durchschnittspreis
+      rules:
+        - "Stk is the count of matching source item positions."
+        - "Umsatz is the sum of their gross position amounts."
+        - "Articles with different VAT rates must not be silently merged."
+        - "This output is a transparent aggregation, not stock inventory management."
+
+    - id: article_hourly_summary
+      filename: "Artikel_Stunden_YYYY-MM.csv"
+      granularity: "one row per date, hour bucket and article"
+      purpose:
+        - time_of_day_merchandise_overview
+        - excel_filtering
+        - weekday_comparison
+      columns:
+        - tag
+        - datum
+        - stunde
+        - artikel
+        - stk
+        - umsatz
+      rules:
+        - "Grouping key is source date + clock-hour bucket + article label."
+        - "Stunde uses HH:00-HH:59."
+        - "Tag is deterministically derived from Datum and written in German."
+        - "Stk is the count of matching source item positions."
+        - "Umsatz is the sum of their gross position amounts."
+        - "No behavioral interpretation is added by the converter."
+
 filename_collision_policy:
   overwrite_existing: false
   strategy: "append_windows_style_counter"
+  applies_to_all_generated_csv_files: true
   examples:
     - "Kasse_Vollstaendig_2026-06.csv"
     - "Kasse_Vollstaendig_2026-06 (1).csv"
@@ -207,13 +250,14 @@ invariants:
   require_traceability: true
   keep_primary_and_control_sources_distinct: true
   never_auto_merge_replacement_receipts: true
+  article_summaries_are_derived_only_from_positions: true
 
 non_goals_v0:
   - "No DATEV replacement."
   - "No accounting engine."
   - "No stock inventory management."
   - "No GUI."
-  - "No automatic business analytics."
+  - "No interpretive, predictive or prescriptive business analytics."
   - "No direct Excel XLSX generation."
   - "No cloud service."
   - "No source data mutation."
@@ -222,7 +266,10 @@ acceptance_criteria:
   - "Executable starts by double-click on Windows."
   - "Executable reads input ZIP files from its own directory."
   - "Executable validates input content, not filenames only."
-  - "Executable produces both CSV outputs in its own directory."
+  - "Executable produces all four CSV outputs in its own directory."
+  - "Kasse_Vollstaendig contains a 1-based receipt position number."
+  - "Artikel_Auswertung aggregates count and gross revenue per article and VAT rate."
+  - "Artikel_Stunden contains Tag, Datum, Stunde, Artikel, Stk. and Umsatz."
   - "Existing CSV files are never overwritten."
   - "Repeated runs create (1), (2), ... filenames."
   - "CSV files open correctly in German Excel."
