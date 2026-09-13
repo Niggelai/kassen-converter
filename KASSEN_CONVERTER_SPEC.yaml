@@ -27,6 +27,7 @@ runtime:
       - pathlib
       - logging
       - datetime
+      - re
   gui: false
   database: false
   installation_required: false
@@ -54,6 +55,7 @@ inputs:
         - accounting_cross_check
         - payment_method_cross_check
         - cash_card_plausibility
+        - tip_cross_check
       validation:
         - "Do not trust filename alone."
         - "Validate ZIP contents and expected EXTF structure before parsing."
@@ -113,12 +115,15 @@ outputs:
         - trinkgeld
         - bar
         - karte
+        - auf_rechnung
         - sonstige_zahlart
-        - zahlungsart_summe
+        - abwicklungssumme
         - differenz
+        - pruefhinweis
       rules:
         - "VAT summary columns are derived only from source VAT rates."
         - "Payment method totals must remain separately visible."
+        - "Auf Rechnung must be represented separately from other payment methods."
         - "Tips must remain separately visible and must not be treated as sales revenue."
         - "Difference must make receipt-level inconsistencies visible."
 
@@ -156,7 +161,7 @@ plausibility_checks:
       on_failure: "mark warning and log details"
 
     - id: receipt_payment_sum
-      rule: "receipt_total + tips == cash + card + other_payment_methods"
+      rule: "receipt_total + tips == cash + card + on_account + other_payment_methods"
       on_failure: "mark difference and log details"
 
     - id: source_cross_check
@@ -167,16 +172,27 @@ cash_control:
   required: true
   principles:
     - "Cash and card must be separately represented."
+    - "On-account transactions must not be counted as cash."
     - "Tips must be separately represented because they affect actual cash/card inflow without being sales revenue."
     - "Cash-related discrepancies must be visible."
     - "The converter must not invent balancing entries."
+
+replacement_and_storno_references:
+  required: true
+  principles:
+    - "Receipt identifiers containing markers such as '(ex-6819)' must be detected where reconstructable."
+    - "The referenced predecessor and the replacement/follow-up receipt must be marked with a Pruefhinweis."
+    - "Detection is a relationship hint only; the converter must not delete, merge or suppress either receipt automatically."
+    - "A detected ex-reference must not be treated as proof of a legal or accounting cancellation without source evidence."
 
 unknown_and_special_cases:
   silent_interpretation: false
   behavior:
     - "Unknown record types are not guessed."
     - "Ambiguous values are not automatically corrected."
-    - "Stornos, vouchers and other special cases must remain identifiable."
+    - "Missing EXTF payment records must be explicitly reported."
+    - "If payment method is unambiguous in XML, it may be transparently derived and must be marked as such."
+    - "Stornos, ex-references, vouchers and other special cases must remain identifiable."
     - "Uninterpretable records must create a warning or error entry."
 
 invariants:
@@ -186,9 +202,11 @@ invariants:
   silently_correct_source_values: false
   require_plausibility_checks: true
   require_cash_card_separation: true
+  require_invoice_separation: true
   require_log: true
   require_traceability: true
   keep_primary_and_control_sources_distinct: true
+  never_auto_merge_replacement_receipts: true
 
 non_goals_v0:
   - "No DATEV replacement."
@@ -208,7 +226,9 @@ acceptance_criteria:
   - "Existing CSV files are never overwritten."
   - "Repeated runs create (1), (2), ... filenames."
   - "CSV files open correctly in German Excel."
-  - "Cash, card and tip values are separately visible."
-  - "Receipt revenue plus tips is checked against payment sums."
+  - "Cash, card, on-account and tip values are separately visible."
+  - "Receipt revenue plus tips is checked against settlement sums."
+  - "Missing EXTF payment records are explicitly reported."
+  - "Recognizable ex/replacement references are marked without automatic deletion or merging."
   - "Unknown or ambiguous cases are explicitly reported."
   - "Original ZIP files remain unchanged."
