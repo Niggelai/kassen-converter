@@ -1,4 +1,5 @@
 import csv
+import logging
 import tempfile
 import unittest
 import zipfile
@@ -65,6 +66,10 @@ class ConverterTests(unittest.TestCase):
                 )
 
             full_path, receipt_path = kc.run(directory)
+            # Windows hält FileHandler exklusiv offen. Im echten Programm endet danach
+            # der Prozess; im Test muss der Handler vor dem Löschen des Temp-Ordners
+            # explizit geschlossen werden.
+            logging.shutdown()
 
             self.assertTrue(full_path.exists())
             self.assertTrue(receipt_path.exists())
