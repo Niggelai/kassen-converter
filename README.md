@@ -4,7 +4,7 @@ Kleine lokale Windows-Anwendung zur Aufbereitung von Kassensystem-Exporten in Ex
 
 ## Zweck
 
-Der Konverter ersetzt weder DATEV noch ein Buchhaltungssystem. Er erzeugt aus vorhandenen Originalexporten eine zusätzliche, nachvollziehbare Arbeits- und Übergabeansicht für die Steuerberatung sowie positionsgenaue Artikeldaten für Excel-Auswertungen.
+Der Konverter ersetzt weder DATEV noch ein Buchhaltungssystem. Er erzeugt aus vorhandenen Originalexporten eine zusätzliche, nachvollziehbare Arbeits- und Übergabeansicht für die Steuerberatung sowie positionsgenaue und transparent aggregierte Artikeldaten für Excel-Auswertungen.
 
 Die Original-ZIP-Dateien werden nicht verändert, verschoben oder überschrieben.
 
@@ -17,8 +17,10 @@ Die EXE arbeitet im Verzeichnis, in dem sie selbst liegt, und erkennt dort anhan
 
 ## Ausgaben
 
-- `Kasse_Vollstaendig_YYYY-MM.csv`: eine Zeile je Artikelposition.
-- `Kasse_Bons_YYYY-MM.csv`: eine Zeile je Bon mit Bruttosummen, 7 % / 19 %, Trinkgeld, Bar, Karte, sonstigen Zahlungsarten und Prüfdifferenz.
+- `Kasse_Vollstaendig_YYYY-MM.csv`: eine Zeile je Artikelposition, zusätzlich mit Positionsnummer innerhalb des Bons.
+- `Kasse_Bons_YYYY-MM.csv`: eine Zeile je Bon mit Bruttosummen, 7 % / 19 %, Trinkgeld, Bar, Karte, Auf Rechnung, sonstigen Zahlungsarten und Prüfdifferenz.
+- `Artikel_Auswertung_YYYY-MM.csv`: Monatsübersicht je Artikel und MwSt.-Satz mit Stückzahl, Bruttoumsatz und Durchschnittspreis.
+- `Artikel_Stunden_YYYY-MM.csv`: tages- und stundenweise Artikelübersicht mit `Tag;Datum;Stunde;Artikel;Stk.;Umsatz`.
 - `KassenConverter.log`: Verarbeitung, Warnungen und erkannte Abweichungen.
 
 Vorhandene CSVs werden nie überschrieben. Wiederholte Läufe erzeugen Namen wie `Kasse_Bons_2026-06 (1).csv`.
@@ -55,7 +57,7 @@ Beispiel Monatsordner:
     EXTF_Buchungsstapel_....zip
 ```
 
-`KassenConverter.exe` doppelklicken. Die beiden CSV-Dateien und das Log werden im selben Ordner erzeugt.
+`KassenConverter.exe` doppelklicken. Die vier CSV-Dateien und das Log werden im selben Ordner erzeugt.
 
 ## Spezifikation
 
