@@ -28,6 +28,15 @@ CARD_HINTS = (
 )
 INVOICE_HINTS = ("auf rechnung", "rechnung")
 EX_REFERENCE_RE = re.compile(r"\(\s*ex-(\d+)\s*\)", re.IGNORECASE)
+GERMAN_WEEKDAYS = (
+    "Montag",
+    "Dienstag",
+    "Mittwoch",
+    "Donnerstag",
+    "Freitag",
+    "Samstag",
+    "Sonntag",
+)
 
 
 @dataclass(frozen=True)
@@ -156,7 +165,10 @@ def decode_extf(data: bytes) -> str:
 def validate_extf_zip(path: Path) -> bool:
     try:
         with zipfile.ZipFile(path) as zf:
-            matches = [n for n in zf.namelist() if Path(n).name.startswith("EXTF_Einzel_Buchungsstapel_") and n.lower().endswith(".csv")]
+            matches = [
+                n for n in zf.namelist()
+                if Path(n).name.startswith("EXTF_Einzel_Buchungsstapel_") and n.lower().endswith(".csv")
+            ]
             if not matches:
                 return False
             lines = decode_extf(zf.read(matches[0])).splitlines()
@@ -211,7 +223,10 @@ def mark_replacement_relations(receipts: dict[str, Receipt], logger: logging.Log
 def parse_datev(path: Path, logger: logging.Logger) -> dict[str, Receipt]:
     receipts: dict[str, Receipt] = {}
     with zipfile.ZipFile(path) as zf:
-        xml_names = sorted(n for n in zf.namelist() if n.lower().endswith(".xml") and Path(n).name != "document.xml")
+        xml_names = sorted(
+            n for n in zf.namelist()
+            if n.lower().endswith(".xml") and Path(n).name != "document.xml"
+        )
         for name in xml_names:
             try:
                 root = ET.fromstring(zf.read(name))
@@ -245,12 +260,18 @@ def parse_datev(path: Path, logger: logging.Logger) -> dict[str, Receipt]:
                 amount = money(node.findtext("d:amount", default="", namespaces=NS) or "")
                 vat = money(node.findtext("d:tax", default="0", namespaces=NS) or "0")
                 vat_sums[vat] += amount
-                positions.append(Position(
-                    date=dt.strftime("%d.%m.%Y"), time=dt.strftime("%H:%M:%S"), receipt_id=receipt_id,
-                    item=(node.findtext("d:information", default="", namespaces=NS) or "").strip(), amount=amount, vat=vat,
-                    account=(node.findtext("d:accountNo", default="", namespaces=NS) or "").strip(),
-                    payment_method=(node.findtext("d:bookingText", default="", namespaces=NS) or "").strip(),
-                ))
+                positions.append(
+                    Position(
+                        date=dt.strftime("%d.%m.%Y"),
+                        time=dt.strftime("%H:%M:%S"),
+                        receipt_id=receipt_id,
+                        item=(node.findtext("d:information", default="", namespaces=NS) or "").strip(),
+                        amount=amount,
+                        vat=vat,
+                        account=(node.findtext("d:accountNo", default="", namespaces=NS) or "").strip(),
+                        payment_method=(node.findtext("d:bookingText", default="", namespaces=NS) or "").strip(),
+                    )
+                )
 
             if len(receipt_ids) != 1 or "" in receipt_ids:
                 raise ConverterError(f"Uneindeutige oder fehlende Bonnummer in {name}: {sorted(receipt_ids)!r}")
@@ -261,8 +282,13 @@ def parse_datev(path: Path, logger: logging.Logger) -> dict[str, Receipt]:
             position_sum = sum((p.amount for p in positions), MONEY_ZERO)
             first_dt = min(timestamps)
             receipt = Receipt(
-                date=first_dt.strftime("%d.%m.%Y"), time=first_dt.strftime("%H:%M:%S"), receipt_id=receipt_id,
-                total=total, positions=positions, vat_7=vat_sums[Decimal("7.00")], vat_19=vat_sums[Decimal("19.00")],
+                date=first_dt.strftime("%d.%m.%Y"),
+                time=first_dt.strftime("%H:%M:%S"),
+                receipt_id=receipt_id,
+                total=total,
+                positions=positions,
+                vat_7=vat_sums[Decimal("7.00")],
+                vat_19=vat_sums[Decimal("19.00")],
             )
             if position_sum != total:
                 msg = f"Positionssumme {position_sum} weicht von Bonsumme {total} ab"
@@ -276,7 +302,11 @@ def parse_datev(path: Path, logger: logging.Logger) -> dict[str, Receipt]:
     if not receipts:
         raise ConverterError("Im DATEV-XML-Export wurden keine Bons gefunden.")
     mark_replacement_relations(receipts, logger)
-    logger.info("%d Bons und %d Positionen aus XML gelesen.", len(receipts), sum(len(r.positions) for r in receipts.values()))
+    logger.info(
+        "%d Bons und %d Positionen aus XML gelesen.",
+        len(receipts),
+        sum(len(r.positions) for r in receipts.values()),
+    )
     return receipts
 
 
@@ -298,14 +328,20 @@ def fallback_payment_from_xml(receipt: Receipt, logger: logging.Logger) -> None:
         receipt.on_account = receipt.total
     else:
         receipt.other_payment = receipt.total
-    msg = f"EXTF-Zahlungsdatensatz fehlt; Zahlungsbetrag aus XML-Zahlungsart '{label}' abgeleitet, Trinkgeld nicht prüfbar"
+    msg = (
+        f"EXTF-Zahlungsdatensatz fehlt; Zahlungsbetrag aus XML-Zahlungsart '{label}' "
+        "abgeleitet, Trinkgeld nicht prüfbar"
+    )
     receipt.warnings.append(msg)
     logger.warning("%s: %s", receipt.receipt_id, msg)
 
 
 def parse_extf(path: Path, receipts: dict[str, Receipt], logger: logging.Logger) -> None:
     with zipfile.ZipFile(path) as zf:
-        names = [n for n in zf.namelist() if Path(n).name.startswith("EXTF_Einzel_Buchungsstapel_") and n.lower().endswith(".csv")]
+        names = [
+            n for n in zf.namelist()
+            if Path(n).name.startswith("EXTF_Einzel_Buchungsstapel_") and n.lower().endswith(".csv")
+        ]
         if len(names) != 1:
             raise ConverterError("EXTF-ZIP enthält nicht genau einen Einzel-Buchungsstapel.")
         text = decode_extf(zf.read(names[0]))
@@ -342,6 +378,7 @@ def parse_extf(path: Path, receipts: dict[str, Receipt], logger: logging.Logger)
             logger.warning("EXTF enthält Bon %s, der im XML-Export nicht vorhanden ist.", receipt_id)
             continue
         extf_receipt_seen.add(receipt_id)
+
         if normalize_label(label) == "trinkgeld":
             if side != "H":
                 logger.warning("%s: Trinkgeld mit unerwartetem Soll/Haben-Kennzeichen %s.", receipt_id, side)
@@ -377,12 +414,19 @@ def parse_extf(path: Path, receipts: dict[str, Receipt], logger: logging.Logger)
         receipt.on_account = receipt.on_account.quantize(Decimal("0.01"))
         receipt.other_payment = receipt.other_payment.quantize(Decimal("0.01"))
         receipt.tips = receipt.tips.quantize(Decimal("0.01"))
-        receipt.payment_sum = (receipt.cash + receipt.card + receipt.on_account + receipt.other_payment).quantize(Decimal("0.01"))
-        receipt.difference = (receipt.payment_sum - (receipt.total + receipt.tips)).quantize(Decimal("0.01"))
+        receipt.payment_sum = (
+            receipt.cash + receipt.card + receipt.on_account + receipt.other_payment
+        ).quantize(Decimal("0.01"))
+        receipt.difference = (
+            receipt.payment_sum - (receipt.total + receipt.tips)
+        ).quantize(Decimal("0.01"))
         if receipt.receipt_id in extf_receipt_seen:
             revenue_sum = extf_revenue[receipt.receipt_id].quantize(Decimal("0.01"))
             if revenue_sum != receipt.total:
-                msg = f"EXTF-Buchungssumme ohne Trinkgeld {revenue_sum} EUR weicht von XML-Bonsumme {receipt.total} EUR ab"
+                msg = (
+                    f"EXTF-Buchungssumme ohne Trinkgeld {revenue_sum} EUR weicht von "
+                    f"XML-Bonsumme {receipt.total} EUR ab"
+                )
                 receipt.warnings.append(msg)
                 logger.warning("%s: %s", receipt.receipt_id, msg)
         if receipt.receipt_id in extf_payment_seen and receipt.difference != MONEY_ZERO:
@@ -400,15 +444,38 @@ def period_from_receipts(receipts: dict[str, Receipt]) -> str:
     return f"{year:04d}-{month:02d}"
 
 
+def sorted_receipts(receipts: dict[str, Receipt]) -> list[Receipt]:
+    return sorted(
+        receipts.values(),
+        key=lambda r: (datetime.strptime(r.date, "%d.%m.%Y"), r.time, r.receipt_id),
+    )
+
+
+def all_positions(receipts: dict[str, Receipt]) -> list[Position]:
+    return [p for receipt in sorted_receipts(receipts) for p in receipt.positions]
+
+
 def write_full_csv(directory: Path, period: str, receipts: dict[str, Receipt]) -> Path:
     path = next_available(directory / f"Kasse_Vollstaendig_{period}.csv")
-    columns = ["Datum", "Uhrzeit", "Bonnummer", "Artikel", "Betrag", "MwSt", "Konto", "Zahlungsart"]
+    columns = [
+        "Datum", "Uhrzeit", "Bonnummer", "Position", "Artikel", "Betrag", "MwSt", "Konto", "Zahlungsart"
+    ]
     with path.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv.writer(fh, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(columns)
-        for receipt in sorted(receipts.values(), key=lambda r: (datetime.strptime(r.date, "%d.%m.%Y"), r.time, r.receipt_id)):
-            for p in receipt.positions:
-                writer.writerow([p.date, p.time, p.receipt_id, p.item, german_money(p.amount), german_money(p.vat), p.account, p.payment_method])
+        for receipt in sorted_receipts(receipts):
+            for position_no, p in enumerate(receipt.positions, start=1):
+                writer.writerow([
+                    p.date,
+                    p.time,
+                    p.receipt_id,
+                    position_no,
+                    p.item,
+                    german_money(p.amount),
+                    german_money(p.vat),
+                    p.account,
+                    p.payment_method,
+                ])
     return path
 
 
@@ -421,16 +488,84 @@ def write_receipt_csv(directory: Path, period: str, receipts: dict[str, Receipt]
     with path.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv.writer(fh, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(columns)
-        for r in sorted(receipts.values(), key=lambda x: (datetime.strptime(x.date, "%d.%m.%Y"), x.time, x.receipt_id)):
+        for r in sorted_receipts(receipts):
             writer.writerow([
-                r.date, r.time, r.receipt_id, german_money(r.total), german_money(r.vat_7), german_money(r.vat_19),
-                german_money(r.tips), german_money(r.cash), german_money(r.card), german_money(r.on_account),
-                german_money(r.other_payment), german_money(r.payment_sum), german_money(r.difference), " | ".join(r.warnings),
+                r.date,
+                r.time,
+                r.receipt_id,
+                german_money(r.total),
+                german_money(r.vat_7),
+                german_money(r.vat_19),
+                german_money(r.tips),
+                german_money(r.cash),
+                german_money(r.card),
+                german_money(r.on_account),
+                german_money(r.other_payment),
+                german_money(r.payment_sum),
+                german_money(r.difference),
+                " | ".join(r.warnings),
             ])
     return path
 
 
-def run(directory: Path | None = None) -> tuple[Path, Path]:
+def write_article_summary_csv(directory: Path, period: str, receipts: dict[str, Receipt]) -> Path:
+    path = next_available(directory / f"Artikel_Auswertung_{period}.csv")
+    grouped: dict[tuple[str, Decimal], list[Decimal | int]] = {}
+    for p in all_positions(receipts):
+        key = (p.item, p.vat)
+        if key not in grouped:
+            grouped[key] = [0, MONEY_ZERO]
+        grouped[key][0] = int(grouped[key][0]) + 1
+        grouped[key][1] = Decimal(grouped[key][1]) + p.amount
+
+    with path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.writer(fh, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(["Artikel", "MwSt", "Stk.", "Umsatz", "Durchschnittspreis"])
+        for (item, vat), values in sorted(grouped.items(), key=lambda x: (x[0][0].casefold(), x[0][1])):
+            count = int(values[0])
+            revenue = Decimal(values[1]).quantize(Decimal("0.01"))
+            average = (revenue / count).quantize(Decimal("0.01")) if count else MONEY_ZERO
+            writer.writerow([item, german_money(vat), count, german_money(revenue), german_money(average)])
+    return path
+
+
+def hour_bucket(time_text: str) -> str:
+    hour = datetime.strptime(time_text, "%H:%M:%S").hour
+    return f"{hour:02d}:00-{hour:02d}:59"
+
+
+def write_article_hourly_csv(directory: Path, period: str, receipts: dict[str, Receipt]) -> Path:
+    path = next_available(directory / f"Artikel_Stunden_{period}.csv")
+    grouped: dict[tuple[str, str, str], list[Decimal | int]] = {}
+    for p in all_positions(receipts):
+        key = (p.date, hour_bucket(p.time), p.item)
+        if key not in grouped:
+            grouped[key] = [0, MONEY_ZERO]
+        grouped[key][0] = int(grouped[key][0]) + 1
+        grouped[key][1] = Decimal(grouped[key][1]) + p.amount
+
+    rows = []
+    for (date_text, hour, item), values in grouped.items():
+        dt = datetime.strptime(date_text, "%d.%m.%Y")
+        rows.append((dt, hour, item, int(values[0]), Decimal(values[1]).quantize(Decimal("0.01"))))
+    rows.sort(key=lambda r: (r[0], r[1], r[2].casefold()))
+
+    with path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.writer(fh, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(["Tag", "Datum", "Stunde", "Artikel", "Stk.", "Umsatz"])
+        for dt, hour, item, count, revenue in rows:
+            writer.writerow([
+                GERMAN_WEEKDAYS[dt.weekday()],
+                dt.strftime("%d.%m.%Y"),
+                hour,
+                item,
+                count,
+                german_money(revenue),
+            ])
+    return path
+
+
+def run(directory: Path | None = None) -> tuple[Path, Path, Path, Path]:
     directory = (directory or app_dir()).resolve()
     logger = setup_logger(directory)
     try:
@@ -442,26 +577,33 @@ def run(directory: Path | None = None) -> tuple[Path, Path]:
         else:
             for receipt in receipts.values():
                 fallback_payment_from_xml(receipt, logger)
-                receipt.payment_sum = (receipt.cash + receipt.card + receipt.on_account + receipt.other_payment).quantize(Decimal("0.01"))
+                receipt.payment_sum = (
+                    receipt.cash + receipt.card + receipt.on_account + receipt.other_payment
+                ).quantize(Decimal("0.01"))
                 receipt.difference = (receipt.payment_sum - receipt.total).quantize(Decimal("0.01"))
                 receipt.warnings.append("EXTF-Kontrollquelle fehlt; Trinkgeld nicht prüfbar")
+
         period = period_from_receipts(receipts)
         full_path = write_full_csv(directory, period, receipts)
         receipt_path = write_receipt_csv(directory, period, receipts)
-        logger.info("Ausgabe erstellt: %s", full_path.name)
-        logger.info("Ausgabe erstellt: %s", receipt_path.name)
+        article_path = write_article_summary_csv(directory, period, receipts)
+        hourly_path = write_article_hourly_csv(directory, period, receipts)
+        for output in (full_path, receipt_path, article_path, hourly_path):
+            logger.info("Ausgabe erstellt: %s", output.name)
         logger.info("KassenConverter beendet.")
-        return full_path, receipt_path
+        return full_path, receipt_path, article_path, hourly_path
     finally:
         close_logger(logger)
 
 
 def main() -> int:
     try:
-        full_path, receipt_path = run()
+        full_path, receipt_path, article_path, hourly_path = run()
         print("KassenConverter erfolgreich.")
         print(f"Vollständige Positionen: {full_path.name}")
         print(f"Bon-Übersicht:          {receipt_path.name}")
+        print(f"Artikel-Auswertung:     {article_path.name}")
+        print(f"Artikel nach Stunden:   {hourly_path.name}")
         print("Details: KassenConverter.log")
         input("Enter zum Schließen ...")
         return 0
