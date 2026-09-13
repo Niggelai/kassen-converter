@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+
+build/
+dist/
+*.spec
+
+KassenConverter.log
+Kasse_*.csv
+
+DATEV_XML_Export_*.zip
+EXTF_Buchungsstapel_*.zip
