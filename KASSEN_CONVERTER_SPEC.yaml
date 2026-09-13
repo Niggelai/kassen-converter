@@ -1,0 +1,211 @@
+project:
+  name: KassenConverter
+  version: "0.1"
+  purpose: >
+    Lokale Windows-Anwendung zur unveränderten Aufbereitung von Kassensystem-Exporten
+    in CSV-Dateien als zusätzliche Arbeits- und Übergabeansicht für Steuerberatung
+    sowie zur Nutzung der Artikeldaten in Excel.
+
+scope:
+  accounting_replacement: false
+  datev_replacement: false
+  modifies_original_records: false
+  primary_goal: "Nachvollziehbare Projektion vorhandener Kassendaten in Excel-kompatible CSV-Dateien"
+  secondary_goal: "Bereitstellung positionsgenauer Artikeldaten für betriebliche Auswertungen"
+
+runtime:
+  platform: Windows
+  distribution: "portable single-file EXE"
+  language: Python 3
+  packaging: PyInstaller
+  dependencies:
+    preference: "Python standard library only"
+    expected_modules:
+      - zipfile
+      - xml.etree.ElementTree
+      - csv
+      - pathlib
+      - logging
+      - datetime
+  gui: false
+  database: false
+  installation_required: false
+  working_directory: "directory containing the executable"
+
+inputs:
+  sources:
+    - id: datev_xml_export
+      filename_pattern: "DATEV_XML_Export_*.zip"
+      role: primary
+      purpose:
+        - receipts
+        - item_positions
+        - timestamps
+        - vat_rates
+        - payment_information
+      validation:
+        - "Do not trust filename alone."
+        - "Validate ZIP contents and expected XML structure before parsing."
+
+    - id: extf_booking_batch
+      filename_pattern: "EXTF_Buchungsstapel_*.zip"
+      role: control
+      purpose:
+        - accounting_cross_check
+        - payment_method_cross_check
+        - cash_card_plausibility
+      validation:
+        - "Do not trust filename alone."
+        - "Validate ZIP contents and expected EXTF structure before parsing."
+
+source_handling:
+  modify_source_files: false
+  delete_source_files: false
+  move_source_files: false
+  rename_source_files: false
+  extract_persistently: false
+  note: "Source ZIP files remain untouched in place."
+
+outputs:
+  csv_format:
+    delimiter: ";"
+    encoding: "utf-8-sig"
+    decimal_separator: ","
+    date_format: "DD.MM.YYYY"
+    time_format: "HH:MM:SS"
+
+  files:
+    - id: full_positions
+      filename: "Kasse_Vollstaendig_YYYY-MM.csv"
+      granularity: "one row per source item position"
+      purpose:
+        - traceable_raw_view
+        - excel_filtering
+        - merchandise_analysis
+      columns:
+        - datum
+        - uhrzeit
+        - bonnummer
+        - artikel
+        - betrag
+        - mwst
+        - konto
+        - zahlungsart
+      rules:
+        - "Values must originate from source data or from trivial transparent derivations."
+        - "Do not silently invent categories, quantities or corrections."
+        - "If repeated units are represented as repeated positions, preserve them as repeated rows."
+
+    - id: receipt_summary
+      filename: "Kasse_Bons_YYYY-MM.csv"
+      granularity: "one row per receipt"
+      purpose:
+        - tax_advisor_working_view
+        - cash_card_control
+        - receipt_level_plausibility
+      columns:
+        - datum
+        - uhrzeit
+        - bonnummer
+        - brutto_gesamt
+        - brutto_7_prozent
+        - brutto_19_prozent
+        - bar
+        - karte
+        - sonstige_zahlart
+        - zahlungsart_summe
+        - differenz
+      rules:
+        - "VAT summary columns are derived only from source VAT rates."
+        - "Payment method totals must remain separately visible."
+        - "Difference must make receipt-level inconsistencies visible."
+
+filename_collision_policy:
+  overwrite_existing: false
+  strategy: "append_windows_style_counter"
+  examples:
+    - "Kasse_Vollstaendig_2026-06.csv"
+    - "Kasse_Vollstaendig_2026-06 (1).csv"
+    - "Kasse_Vollstaendig_2026-06 (2).csv"
+
+logging:
+  required: true
+  filename: "KassenConverter.log"
+  log:
+    - start_and_end
+    - detected_input_files
+    - validated_input_types
+    - processed_receipts
+    - processed_item_positions
+    - warnings
+    - special_cases
+    - parse_errors
+    - plausibility_failures
+    - output_files
+  behavior:
+    - "Errors must be understandable for a non-programmer."
+    - "Do not suppress parse or plausibility errors silently."
+
+plausibility_checks:
+  required: true
+  checks:
+    - id: receipt_item_sum
+      rule: "sum(item_positions) == receipt_total"
+      on_failure: "mark warning and log details"
+
+    - id: receipt_payment_sum
+      rule: "receipt_total == cash + card + other_payment_methods"
+      on_failure: "mark difference and log details"
+
+    - id: source_cross_check
+      rule: "where technically possible, compare XML-derived values with EXTF booking batch"
+      on_failure: "log discrepancy; do not silently reconcile"
+
+cash_control:
+  required: true
+  principles:
+    - "Cash and card must be separately represented."
+    - "Cash-related discrepancies must be visible."
+    - "The converter must not invent balancing entries."
+
+unknown_and_special_cases:
+  silent_interpretation: false
+  behavior:
+    - "Unknown record types are not guessed."
+    - "Ambiguous values are not automatically corrected."
+    - "Stornos, vouchers and other special cases must remain identifiable."
+    - "Uninterpretable records must create a warning or error entry."
+
+invariants:
+  modify_source_files: false
+  overwrite_output_files: false
+  silently_ignore_unknown_records: false
+  silently_correct_source_values: false
+  require_plausibility_checks: true
+  require_cash_card_separation: true
+  require_log: true
+  require_traceability: true
+  keep_primary_and_control_sources_distinct: true
+
+non_goals_v0:
+  - "No DATEV replacement."
+  - "No accounting engine."
+  - "No stock inventory management."
+  - "No GUI."
+  - "No automatic business analytics."
+  - "No direct Excel XLSX generation."
+  - "No cloud service."
+  - "No source data mutation."
+
+acceptance_criteria:
+  - "Executable starts by double-click on Windows."
+  - "Executable reads input ZIP files from its own directory."
+  - "Executable validates input content, not filenames only."
+  - "Executable produces both CSV outputs in its own directory."
+  - "Existing CSV files are never overwritten."
+  - "Repeated runs create (1), (2), ... filenames."
+  - "CSV files open correctly in German Excel."
+  - "Cash and card values are separately visible."
+  - "Receipt sums and payment sums are checked."
+  - "Unknown or ambiguous cases are explicitly reported."
+  - "Original ZIP files remain unchanged."
