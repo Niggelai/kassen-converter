@@ -110,6 +110,7 @@ outputs:
         - brutto_gesamt
         - brutto_7_prozent
         - brutto_19_prozent
+        - trinkgeld
         - bar
         - karte
         - sonstige_zahlart
@@ -118,6 +119,7 @@ outputs:
       rules:
         - "VAT summary columns are derived only from source VAT rates."
         - "Payment method totals must remain separately visible."
+        - "Tips must remain separately visible and must not be treated as sales revenue."
         - "Difference must make receipt-level inconsistencies visible."
 
 filename_collision_policy:
@@ -154,7 +156,7 @@ plausibility_checks:
       on_failure: "mark warning and log details"
 
     - id: receipt_payment_sum
-      rule: "receipt_total == cash + card + other_payment_methods"
+      rule: "receipt_total + tips == cash + card + other_payment_methods"
       on_failure: "mark difference and log details"
 
     - id: source_cross_check
@@ -165,6 +167,7 @@ cash_control:
   required: true
   principles:
     - "Cash and card must be separately represented."
+    - "Tips must be separately represented because they affect actual cash/card inflow without being sales revenue."
     - "Cash-related discrepancies must be visible."
     - "The converter must not invent balancing entries."
 
@@ -205,7 +208,7 @@ acceptance_criteria:
   - "Existing CSV files are never overwritten."
   - "Repeated runs create (1), (2), ... filenames."
   - "CSV files open correctly in German Excel."
-  - "Cash and card values are separately visible."
-  - "Receipt sums and payment sums are checked."
+  - "Cash, card and tip values are separately visible."
+  - "Receipt revenue plus tips is checked against payment sums."
   - "Unknown or ambiguous cases are explicitly reported."
   - "Original ZIP files remain unchanged."
